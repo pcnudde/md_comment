@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "GitHub Rendered Diff Commenter",
+  "description": "Comment on rendered markdown in GitHub PRs without switching to source view.",
+  "version": "0.1.6",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "options_page": "src/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*/*/pull/*"],
+      "js": ["src/content-script.js"],
+      "css": ["src/content-style.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Rendered Diff Commenter"
+  }
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "id": 2808272535,
+    "path": "docs/design/collab_api_spec.md",
+    "line": null,
+    "start_line": null,
+    "original_line": 985,
+    "original_start_line": null,
+    "side": "RIGHT",
+    "start_side": null,
+    "body": "**Inconsistent import paths for `CollabRecipe`**"
+  },
+  {
+    "id": 2808272557,
+    "path": "docs/design/collab_api_spec.md",
+    "line": null,
+    "start_line": null,
+    "original_line": 980,
+    "original_start_line": 953,
+    "side": "RIGHT",
+    "start_side": "RIGHT",
+    "body": "**Several documented Recipe methods don't exist in the base `Recipe` class**"
+  },
+  {
+    "id": 2808301082,
+    "path": "docs/design/collab_api_spec.md",
+    "line": 252,
+    "start_line": 249,
+    "original_line": 317,
+    "original_start_line": 313,
+    "side": "RIGHT",
+    "start_side": "RIGHT",
+    "body": "`SimpleModel` and `loss` are referenced but never defined."
+  },
+  {
+    "id": 2808301293,
+    "path": "docs/design/collab_api_spec.md",
+    "line": 64,
+    "start_line": 62,
+    "original_line": 61,
+    "original_start_line": 59,
+    "side": "RIGHT",
+    "start_side": "RIGHT",
+    "body": "`SimpleModel`, `weights`, and training loop logic are referenced but not shown."
+  },
+  {
+    "id": 2808392316,
+    "path": "docs/design/collab_api_spec.md",
+    "line": null,
+    "start_line": null,
+    "original_line": 112,
+    "original_start_line": 111,
+    "side": "RIGHT",
+    "start_side": "RIGHT",
+    "body": "The comment on line 111 says the training loop computes loss but logic is not shown."
+  },
+  {
+    "id": 2808419262,
+    "path": "docs/design/collab_api_spec.md",
+    "line": 40,
+    "start_line": 31,
+    "original_line": 37,
+    "original_start_line": 28,
+    "side": "RIGHT",
+    "start_side": "RIGHT",
+    "body": "**Missing `ProdEnv` from Key Concepts table**"
+  }
+]

@@ -30,7 +30,7 @@ Private Chrome extension for commenting on rendered Markdown diffs in GitHub PRs
 3. Set minimum permissions:
    - `Pull requests`: Read and write
    - `Contents`: Read (optional fallback)
-4. Paste token in options and click **Save Token**.
+4. Paste token in options and click **Save**.
 5. Click **Validate Token**.
 
 ## Use
@@ -41,6 +41,12 @@ Private Chrome extension for commenting on rendered Markdown diffs in GitHub PRs
 4. Review or switch the mapped line candidate.
 5. Write comment and click **Post comment**.
 
+### Optional Sidebar
+
+The PR comments sidebar is enabled by default. You can disable it in extension options with `Enable optional PR comments sidebar in Files view`.
+Use `Debug` in the sidebar to open a copyable mapping diagnostics panel.
+Resolved PR review-thread comments are hidden from the sidebar/aligned rail.
+
 ## Project Files
 
 - `/Users/pcnudde/prj/md_comment/manifest.json`
@@ -50,8 +56,14 @@ Private Chrome extension for commenting on rendered Markdown diffs in GitHub PRs
 - `/Users/pcnudde/prj/md_comment/src/options.html`
 - `/Users/pcnudde/prj/md_comment/src/options.js`
 
+## Run Tests
+
+1. From `/Users/pcnudde/prj/md_comment`, run `npm test`.
+2. This runs fixture-based regression tests for PR `NVIDIA/NVFlare#4196` comment/HTML shape.
+
 ## Notes and Limits
 
 - Mapping from rendered text to patch lines is heuristic; repeated text can produce ambiguous candidates.
 - Very large file diffs may omit `patch` in GitHub API; those cannot be auto-mapped.
 - Token is stored in Chrome extension sync storage for convenience.
+- Resolved-comment filtering requires GitHub review-thread access. If that lookup fails, comments are not shown.

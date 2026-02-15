@@ -1,4 +1,8 @@
 const GITHUB_API_BASE = "https://api.github.com";
+import {
+  collectResolvedCommentIdsFromReviewThreadsResponse,
+  filterOutResolvedComments
+} from "./review-thread-filter.mjs";
 
 chrome.action.onClicked.addListener(() => {
   chrome.runtime.openOptionsPage();
@@ -40,6 +44,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const token = await getToken();
           const result = await postReviewComment(message.payload, token);
           sendResponse({ ok: true, result });
+          return;
+        }
+        case "listPullComments": {
+          const token = await getToken();
+          const comments = await listPullReviewComments(message.payload, token);
+          sendResponse({ ok: true, comments });
           return;
         }
         default:
@@ -154,6 +164,25 @@ async function resolveAnchorCandidates(payload, token) {
   return deduped;
 }
 
+const pullCommentsCache = new Map();
+
+async function listPullReviewComments(payload, token) {
+  assertPayload(payload, ["owner", "repo", "pullNumber"]);
+  const owner = String(payload.owner);
+  const repo = String(payload.repo);
+  const pullNumber = Number(payload.pullNumber);
+  const cacheKey = `${owner}/${repo}#${pullNumber}`;
+  if (payload.forceRefresh) {
+    pullCommentsCache.delete(cacheKey);
+  }
+
+  if (!pullCommentsCache.has(cacheKey)) {
+    pullCommentsCache.set(cacheKey, await fetchAllPullReviewComments(owner, repo, pullNumber, token));
+  }
+
+  return pullCommentsCache.get(cacheKey);
+}
+
 async function getPullHeadSha(owner, repo, pullNumber, token) {
   const resp = await githubFetch(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${Number(pullNumber)}`,
@@ -203,6 +232,184 @@ async function fetchAllPullFiles(owner, repo, pullNumber, token) {
   return allFiles;
 }
 
+async function fetchAllPullReviewComments(owner, repo, pullNumber, token) {
+  const resolvedThreadCommentIds = await fetchResolvedThreadCommentIds(owner, repo, pullNumber, token);
+  const comments = [];
+  let page = 1;
+
+  while (page <= 10) {
+    const resp = await githubFetch(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${Number(pullNumber)}/comments?per_page=100&page=${page}`,
+      token
+    );
+
+    const items = await resp.json();
+    if (!Array.isArray(items) || items.length === 0) {
+      break;
+    }
+
+    const unresolvedItems = filterOutResolvedComments(items, resolvedThreadCommentIds);
+    for (const item of unresolvedItems) {
+      comments.push({
+        id: item.id,
+        path: item.path || "",
+        line: item.line || null,
+        startLine: item.start_line || null,
+        originalLine: item.original_line || null,
+        originalStartLine: item.original_start_line || null,
+        side: item.side || "RIGHT",
+        body: item.body || "",
+        user: item.user && item.user.login ? item.user.login : "unknown",
+        createdAt: item.created_at || "",
+        updatedAt: item.updated_at || "",
+        htmlUrl: item.html_url || "",
+        inReplyToId: item.in_reply_to_id || null
+      });
+    }
+
+    if (items.length < 100) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  comments.sort((a, b) => {
+    if (a.path !== b.path) {
+      return a.path.localeCompare(b.path);
+    }
+
+    const lineA = a.line || 0;
+    const lineB = b.line || 0;
+    if (lineA !== lineB) {
+      return lineA - lineB;
+    }
+
+    return String(a.createdAt).localeCompare(String(b.createdAt));
+  });
+
+  await attachAnchorTextToComments(owner, repo, pullNumber, comments, token);
+  return comments;
+}
+
+async function fetchResolvedThreadCommentIds(owner, repo, pullNumber, token) {
+  const resolvedIds = new Set();
+  let cursor = null;
+  let page = 0;
+
+  while (page < 20) {
+    const query = [
+      "query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {",
+      "  repository(owner: $owner, name: $repo) {",
+      "    pullRequest(number: $number) {",
+      "      reviewThreads(first: 50, after: $cursor) {",
+      "        pageInfo { hasNextPage endCursor }",
+      "        nodes {",
+      "          isResolved",
+      "          comments(first: 100) {",
+      "            nodes { databaseId }",
+      "          }",
+      "        }",
+      "      }",
+      "    }",
+      "  }",
+      "}"
+    ].join("\n");
+
+    const payload = {
+      query,
+      variables: {
+        owner,
+        repo,
+        number: Number(pullNumber),
+        cursor
+      }
+    };
+
+    const json = await githubGraphql(payload, token);
+    const result = collectResolvedCommentIdsFromReviewThreadsResponse(json);
+    for (const id of result.resolvedIds) {
+      resolvedIds.add(id);
+    }
+
+    const pageInfo = result.pageInfo || {};
+    if (!pageInfo.hasNextPage || !pageInfo.endCursor) {
+      break;
+    }
+
+    cursor = pageInfo.endCursor;
+    page += 1;
+  }
+
+  return resolvedIds;
+}
+
+async function attachAnchorTextToComments(owner, repo, pullNumber, comments, token) {
+  if (!Array.isArray(comments) || comments.length === 0) {
+    return;
+  }
+
+  const files = await getPullFiles(owner, repo, pullNumber, token);
+  const byPath = new Map();
+
+  for (const file of files) {
+    if (!file || !file.filename || !file.patch) {
+      continue;
+    }
+
+    const patchLines = parsePatchRightLines(file.patch);
+    if (!patchLines.length) {
+      continue;
+    }
+
+    const lineMap = new Map();
+    for (const line of patchLines) {
+      if (!lineMap.has(line.line)) {
+        lineMap.set(line.line, line.raw || "");
+      }
+    }
+
+    byPath.set(file.filename, lineMap);
+  }
+
+  for (const comment of comments) {
+    if (!comment || !comment.path) {
+      continue;
+    }
+
+    const lineMap = byPath.get(comment.path);
+    if (!lineMap) {
+      continue;
+    }
+
+    const line = Number(comment.line || comment.originalLine || 0);
+    const startLine = Number(comment.startLine || comment.originalStartLine || 0);
+    const lo = Math.min(...[line, startLine].filter((n) => n > 0));
+    const hi = Math.max(line, startLine);
+    let anchorText = "";
+
+    if (lo > 0 && hi > 0 && hi >= lo) {
+      const parts = [];
+      for (let n = lo; n <= hi && parts.length < 4; n += 1) {
+        const value = lineMap.get(n);
+        if (value) {
+          parts.push(value);
+        }
+      }
+      anchorText = parts.join(" ");
+    }
+
+    if (!anchorText && line > 0) {
+      anchorText = lineMap.get(line) || "";
+    }
+    if (!anchorText && startLine > 0) {
+      anchorText = lineMap.get(startLine) || "";
+    }
+
+    comment.anchorText = String(anchorText || "").trim().slice(0, 320);
+  }
+}
+
 async function githubFetch(path, token, init = {}) {
   const headers = {
     Accept: "application/vnd.github+json",
@@ -230,6 +437,33 @@ async function githubFetch(path, token, init = {}) {
   }
 
   return response;
+}
+
+async function githubGraphql(payload, token) {
+  const response = await fetch(`${GITHUB_API_BASE}/graphql`, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await response.json();
+  if (!response.ok) {
+    const detail = json && json.message ? json.message : `GitHub GraphQL failed (${response.status}).`;
+    throw new Error(detail);
+  }
+
+  if (json && Array.isArray(json.errors) && json.errors.length > 0) {
+    const first = json.errors[0];
+    const message = first && first.message ? first.message : "GitHub GraphQL returned errors.";
+    throw new Error(message);
+  }
+
+  return json;
 }
 
 function parsePatchRightLines(patch) {

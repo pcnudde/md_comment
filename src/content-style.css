@@ -172,3 +172,248 @@
   padding: 2px 8px;
   pointer-events: none;
 }
+
+.mdc-sidebar-toggle {
+  position: fixed;
+  top: 40px;
+  right: 10px;
+  z-index: 2147483000;
+  border: 1px solid #d0d7de;
+  background: #fff;
+  color: #1f2328;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.mdc-sidebar {
+  position: fixed;
+  top: 72px;
+  right: 10px;
+  width: min(360px, calc(100vw - 20px));
+  height: min(78vh, 760px);
+  z-index: 2147483000;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(31, 35, 40, 0.22);
+  transform: translateX(calc(100% + 16px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 150ms ease-out, opacity 150ms ease-out;
+}
+
+.mdc-sidebar.is-visible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mdc-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.mdc-sidebar-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2328;
+}
+
+.mdc-sidebar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.mdc-sidebar-refresh,
+.mdc-sidebar-debug,
+.mdc-sidebar-hide {
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #1f2328;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.mdc-sidebar-status {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #57606a;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.mdc-sidebar-status.is-error {
+  color: #cf222e;
+}
+
+.mdc-sidebar-debug-panel {
+  display: none;
+  border-bottom: 1px solid #d8dee4;
+  padding: 8px 10px;
+  background: #f6f8fa;
+  gap: 6px;
+}
+
+.mdc-sidebar-debug-panel.is-visible {
+  display: grid;
+}
+
+.mdc-sidebar-debug-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mdc-sidebar-debug-copy,
+.mdc-sidebar-debug-close {
+  border: 1px solid #d0d7de;
+  background: #fff;
+  color: #1f2328;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.mdc-sidebar-debug-output {
+  width: 100%;
+  min-height: 170px;
+  max-height: 300px;
+  resize: vertical;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #1f2328;
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.mdc-sidebar-list {
+  overflow: auto;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.mdc-sidebar-empty {
+  font-size: 12px;
+  color: #57606a;
+  padding: 6px 4px;
+}
+
+.mdc-sidebar-item {
+  border: 1px solid #d8dee4;
+  border-radius: 9px;
+  padding: 8px;
+  background: #fff;
+}
+
+.mdc-sidebar-item.is-unmapped {
+  border-style: dashed;
+}
+
+.mdc-sidebar-item-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mdc-sidebar-jump {
+  border: none;
+  background: transparent;
+  color: #0969da;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mdc-sidebar-jump:hover {
+  text-decoration: underline;
+}
+
+.mdc-sidebar-open {
+  color: #57606a;
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.mdc-sidebar-open:hover {
+  text-decoration: underline;
+}
+
+.mdc-sidebar-body {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #1f2328;
+}
+
+.mdc-sidebar-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #57606a;
+}
+
+.mdc-flash-target {
+  outline: 2px solid #2a6cff !important;
+  outline-offset: 2px;
+  transition: outline-color 200ms ease-out;
+}
+
+.mdc-aligned-layer {
+  position: fixed;
+  top: 72px;
+  right: 10px;
+  width: 336px;
+  height: calc(100vh - 84px);
+  z-index: 2147482950;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.mdc-aligned-comment {
+  position: absolute;
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.18);
+  padding: 8px 9px;
+  pointer-events: auto;
+}
+
+.mdc-aligned-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0969da;
+}
+
+.mdc-aligned-body {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #1f2328;
+}
+
+.mdc-aligned-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #57606a;
+}

@@ -61,6 +61,15 @@
         font-size: 13px;
       }
 
+      .check-row {
+        margin-top: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
       .actions {
         margin-top: 14px;
         display: flex;
@@ -123,8 +132,16 @@
         <label for="token">Fine-grained PAT</label>
         <input id="token" type="password" autocomplete="off" placeholder="github_pat_..." />
 
+        <label class="check-row" for="sidebar_enabled">
+          <input id="sidebar_enabled" type="checkbox" />
+          Enable optional PR comments sidebar in Files view
+        </label>
+        <p class="meta">
+          Off by default. When enabled, a right-side panel lists PR inline comments and lets you jump to them.
+        </p>
+
         <div class="actions">
-          <button id="save">Save Token</button>
+          <button id="save">Save</button>
           <button id="validate" class="ghost" type="button">Validate Token</button>
           <span id="status"></span>
         </div>

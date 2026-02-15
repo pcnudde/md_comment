@@ -1,0 +1,9 @@
+{
+  "name": "md-comment-extension",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Regression tests for rendered markdown PR commenting behavior.",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}

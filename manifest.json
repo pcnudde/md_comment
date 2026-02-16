@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GitHub Rendered Diff Commenter",
   "description": "Comment on rendered markdown in GitHub PRs without switching to source view.",
-  "version": "0.1.30",
+  "version": "0.1.33",
   "permissions": ["storage"],
   "host_permissions": [
     "https://github.com/*",

@@ -22,7 +22,7 @@ Private Chrome extension for commenting on rendered Markdown diffs in GitHub PRs
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Click **Load unpacked**.
-4. Select this folder: `/Users/pcnudde/prj/md_comment`.
+4. Select this repository folder (the project root).
 5. Click the extension icon and open options (or use extension details -> options).
 
 ## Token Setup
@@ -51,16 +51,16 @@ Resolved PR review-thread comments are hidden from the sidebar/aligned rail.
 
 ## Project Files
 
-- `/Users/pcnudde/prj/md_comment/manifest.json`
-- `/Users/pcnudde/prj/md_comment/src/background.js`
-- `/Users/pcnudde/prj/md_comment/src/content-script.js`
-- `/Users/pcnudde/prj/md_comment/src/content-style.css`
-- `/Users/pcnudde/prj/md_comment/src/options.html`
-- `/Users/pcnudde/prj/md_comment/src/options.js`
+- `manifest.json`
+- `src/background.js`
+- `src/content-script.js`
+- `src/content-style.css`
+- `src/options.html`
+- `src/options.js`
 
 ## Run Tests
 
-1. From `/Users/pcnudde/prj/md_comment`, run `npm test`.
+1. From the repository root, run `npm test`.
 2. This runs fixture-based regression tests for PR `NVIDIA/NVFlare#4196` comment/HTML shape.
 
 ## Notes and Limits

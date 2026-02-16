@@ -34,7 +34,8 @@ const UI = {
   diffObserver: null,
   diffSyncTimer: null,
   remapRetryTimer: null,
-  remapRetryRemaining: 0
+  remapRetryRemaining: 0,
+  replyStateById: new Map()
 };
 
 init();
@@ -240,6 +241,7 @@ function removeSidebarUi() {
   UI.sidebarTargetById.clear();
   UI.alignedCardById.clear();
   UI.alignedItems = [];
+  UI.replyStateById.clear();
   detachSidebarScrollSync();
   detachDiffObserver();
   stopRemapRetryLoop();
@@ -516,6 +518,7 @@ function renderSidebarComments(comments) {
     return;
   }
 
+  pruneReplyStates(comments);
   UI.sidebarTargetById.clear();
   UI.alignedCardById.clear();
   UI.alignedItems = [];
@@ -792,6 +795,41 @@ function isAlignedRenderableItem(item) {
   return reason === "lineMatchCurrent" || reason === "anchorMatch";
 }
 
+function pruneReplyStates(comments) {
+  if (!(UI.replyStateById instanceof Map)) {
+    UI.replyStateById = new Map();
+  }
+
+  const keepIds = new Set(
+    Array.isArray(comments)
+      ? comments.map((comment) => Number(comment && comment.id ? comment.id : 0)).filter((id) => id > 0)
+      : []
+  );
+
+  for (const key of UI.replyStateById.keys()) {
+    if (!keepIds.has(Number(key))) {
+      UI.replyStateById.delete(key);
+    }
+  }
+}
+
+function getReplyState(commentId) {
+  const key = Number(commentId || 0);
+  if (!key) {
+    return { open: false, draft: "", posting: false };
+  }
+
+  if (!UI.replyStateById.has(key)) {
+    UI.replyStateById.set(key, {
+      open: false,
+      draft: "",
+      posting: false
+    });
+  }
+
+  return UI.replyStateById.get(key);
+}
+
 function layoutAlignedComments() {
   if (!UI.alignedLayer) {
     return;
@@ -856,15 +894,163 @@ function layoutAlignedComments() {
 }
 
 function buildAlignedCard(comment) {
+  const replyState = getReplyState(comment.id);
+  const replies = Array.isArray(comment.replies) ? comment.replies : [];
+  const replyLabel = replies.length === 1 ? "1 reply" : `${replies.length} replies`;
+
   const card = document.createElement("div");
   card.className = "mdc-aligned-comment";
   card.dataset.commentId = String(comment.id);
   card.innerHTML = [
     `<div class="mdc-aligned-head">${escapeHtml(comment.path || "Unknown file")} ${escapeHtml(formatCommentLine(comment))}</div>`,
     `<div class="mdc-aligned-body">${escapeHtml(trimPreview((comment.body || "").replace(/\s+/g, " ").trim(), 220))}</div>`,
-    `<div class="mdc-aligned-meta">${escapeHtml(comment.user || "unknown")} • ${escapeHtml(formatTimestamp(comment.createdAt))}</div>`
+    `<div class="mdc-aligned-meta">${escapeHtml(comment.user || "unknown")} • ${escapeHtml(formatTimestamp(comment.createdAt))}</div>`,
+    replies.length
+      ? `<div class="mdc-aligned-thread-label">${escapeHtml(replyLabel)}</div>${buildReplyThreadHtml(replies)}`
+      : "",
+    '<div class="mdc-aligned-actions">',
+    '  <button type="button" class="mdc-aligned-reply-toggle">Reply</button>',
+    "</div>",
+    '<div class="mdc-aligned-reply-box">',
+    '  <textarea class="mdc-aligned-reply-text" placeholder="Write a reply"></textarea>',
+    '  <div class="mdc-aligned-reply-actions">',
+    '    <button type="button" class="mdc-aligned-reply-cancel">Cancel</button>',
+    '    <button type="button" class="mdc-aligned-reply-submit">Post Reply</button>',
+    "  </div>",
+    "</div>"
   ].join("");
+
+  const toggle = card.querySelector(".mdc-aligned-reply-toggle");
+  const replyBox = card.querySelector(".mdc-aligned-reply-box");
+  const text = card.querySelector(".mdc-aligned-reply-text");
+  const cancel = card.querySelector(".mdc-aligned-reply-cancel");
+  const submit = card.querySelector(".mdc-aligned-reply-submit");
+
+  if (replyState.open) {
+    replyBox.classList.add("is-open");
+    toggle.textContent = "Hide Reply";
+  }
+  if (replyState.draft) {
+    text.value = replyState.draft;
+  }
+  if (replyState.posting) {
+    submit.disabled = true;
+    cancel.disabled = true;
+    toggle.disabled = true;
+    submit.textContent = "Posting...";
+  }
+
+  toggle.addEventListener("click", () => {
+    const state = getReplyState(comment.id);
+    const next = !state.open;
+    state.open = next;
+    replyBox.classList.toggle("is-open", next);
+    toggle.textContent = next ? "Hide Reply" : "Reply";
+    if (next) {
+      text.focus();
+    }
+    scheduleAlignedLayout();
+  });
+
+  text.addEventListener("input", () => {
+    const state = getReplyState(comment.id);
+    state.draft = text.value;
+  });
+
+  cancel.addEventListener("click", () => {
+    const state = getReplyState(comment.id);
+    state.open = false;
+    state.draft = "";
+    state.posting = false;
+    replyBox.classList.remove("is-open");
+    toggle.textContent = "Reply";
+    text.value = "";
+    scheduleAlignedLayout();
+  });
+
+  submit.addEventListener("click", async () => {
+    const body = text.value.trim();
+    if (!body) {
+      notify("Reply text is empty.", "error");
+      return;
+    }
+
+    const pr = readPullContext();
+    if (!pr) {
+      notify("Could not read PR context from this page.", "error");
+      return;
+    }
+
+    const state = getReplyState(comment.id);
+    state.posting = true;
+    state.draft = body;
+    state.open = true;
+    submit.disabled = true;
+    cancel.disabled = true;
+    toggle.disabled = true;
+    const originalText = submit.textContent;
+    submit.textContent = "Posting...";
+    scheduleAlignedLayout();
+
+    try {
+      const response = await sendMessage({
+        type: "replyToComment",
+        payload: {
+          owner: pr.owner,
+          repo: pr.repo,
+          pullNumber: pr.pullNumber,
+          inReplyTo: comment.id,
+          body
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(response.error || "Failed to post reply.");
+      }
+
+      notify("Reply posted.", "ok");
+      state.posting = false;
+      state.open = false;
+      state.draft = "";
+      text.value = "";
+      replyBox.classList.remove("is-open");
+      toggle.textContent = "Reply";
+      if (UI.sidebarEnabled) {
+        void loadSidebarComments(pr, { forceRefresh: true });
+      }
+      scheduleAlignedLayout();
+    } catch (error) {
+      state.posting = false;
+      state.open = true;
+      state.draft = text.value;
+      notify(stringifyError(error), "error");
+    } finally {
+      submit.disabled = false;
+      cancel.disabled = false;
+      toggle.disabled = false;
+      submit.textContent = originalText;
+    }
+  });
+
   return card;
+}
+
+function buildReplyThreadHtml(replies) {
+  if (!Array.isArray(replies) || replies.length === 0) {
+    return "";
+  }
+
+  const items = replies.map((reply) => {
+    const replyBody = trimPreview(String(reply.body || "").replace(/\s+/g, " ").trim(), 180);
+    return [
+      '<div class="mdc-aligned-thread-item">',
+      `  <div class="mdc-aligned-thread-meta">${escapeHtml(reply.user || "unknown")} • ${escapeHtml(formatTimestamp(reply.createdAt))}</div>`,
+      `  <div class="mdc-aligned-thread-body">${escapeHtml(replyBody)}</div>`,
+      "</div>"
+    ].join("");
+  });
+
+  return `<div class="mdc-aligned-thread">${items.join("")}</div>`;
 }
 
 function buildAnchorLineRangesByTarget(items) {

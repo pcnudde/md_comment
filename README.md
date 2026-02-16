@@ -8,6 +8,8 @@ Private Chrome extension for commenting on rendered Markdown diffs in GitHub PRs
 - Maps the selected text to likely changed lines in the patch.
 - Lets you pick the best line candidate.
 - Posts a native GitHub PR review comment through the REST API.
+- Supports inline replies from aligned sidebar comment cards.
+- Shows existing thread replies inside each aligned comment card.
 
 ## Scope
 

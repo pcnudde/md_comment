@@ -39,3 +39,49 @@ export function filterOutResolvedComments(items, resolvedIds) {
   const ids = resolvedIds instanceof Set ? resolvedIds : new Set();
   return items.filter((item) => !ids.has(Number(item && item.id ? item.id : 0)));
 }
+
+export function buildThreadedReviewComments(flatComments) {
+  if (!Array.isArray(flatComments) || flatComments.length === 0) {
+    return [];
+  }
+
+  const byId = new Map();
+  const clones = flatComments.map((comment) => {
+    const clone = {
+      ...comment,
+      replies: []
+    };
+    byId.set(Number(clone.id || 0), clone);
+    return clone;
+  });
+
+  const roots = [];
+  for (const comment of clones) {
+    const parentId = Number(comment.inReplyToId || comment.in_reply_to_id || 0);
+    if (parentId > 0 && byId.has(parentId)) {
+      const parent = byId.get(parentId);
+      parent.replies.push({
+        id: comment.id,
+        body: comment.body || "",
+        user: comment.user || "unknown",
+        createdAt: comment.createdAt || "",
+        updatedAt: comment.updatedAt || "",
+        htmlUrl: comment.htmlUrl || "",
+        inReplyToId: comment.inReplyToId || parentId
+      });
+      continue;
+    }
+
+    roots.push(comment);
+  }
+
+  for (const root of roots) {
+    if (!Array.isArray(root.replies) || root.replies.length <= 1) {
+      continue;
+    }
+
+    root.replies.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+  }
+
+  return roots;
+}

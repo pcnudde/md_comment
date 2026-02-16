@@ -1,5 +1,6 @@
 const GITHUB_API_BASE = "https://api.github.com";
 import {
+  buildThreadedReviewComments,
   collectResolvedCommentIdsFromReviewThreadsResponse,
   filterOutResolvedComments
 } from "./review-thread-filter.mjs";
@@ -43,6 +44,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case "postComment": {
           const token = await getToken();
           const result = await postReviewComment(message.payload, token);
+          sendResponse({ ok: true, result });
+          return;
+        }
+        case "replyToComment": {
+          const token = await getToken();
+          const result = await replyToReviewComment(message.payload, token);
           sendResponse({ ok: true, result });
           return;
         }
@@ -103,6 +110,32 @@ async function postReviewComment(payload, token) {
     path: json.path,
     line: json.line,
     side: json.side
+  };
+}
+
+async function replyToReviewComment(payload, token) {
+  assertPayload(payload, ["owner", "repo", "pullNumber", "inReplyTo", "body"]);
+
+  const resp = await githubFetch(
+    `/repos/${encodeURIComponent(payload.owner)}/${encodeURIComponent(payload.repo)}/pulls/${Number(payload.pullNumber)}/comments`,
+    token,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        body: payload.body,
+        in_reply_to: Number(payload.inReplyTo)
+      })
+    }
+  );
+
+  const json = await resp.json();
+  return {
+    id: json.id,
+    html_url: json.html_url,
+    in_reply_to_id: json.in_reply_to_id || null
   };
 }
 
@@ -289,7 +322,7 @@ async function fetchAllPullReviewComments(owner, repo, pullNumber, token) {
   });
 
   await attachAnchorTextToComments(owner, repo, pullNumber, comments, token);
-  return comments;
+  return buildThreadedReviewComments(comments);
 }
 
 async function fetchResolvedThreadCommentIds(owner, repo, pullNumber, token) {

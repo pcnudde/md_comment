@@ -5,6 +5,10 @@ import {
   filterOutResolvedComments
 } from "./review-thread-filter.mjs";
 
+const pullCommentsCache = new Map();
+const pullFilesCache = new Map();
+const fileContentCache = new Map();
+
 chrome.action.onClicked.addListener(() => {
   chrome.runtime.openOptionsPage();
 });
@@ -19,13 +23,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       switch (message.type) {
         case "saveToken": {
           const token = String(message.token || "").trim();
-          await chrome.storage.sync.set({ githubToken: token });
+          await chrome.storage.local.set({ githubToken: token });
+          await chrome.storage.sync.remove(["githubToken"]);
+          clearApiCaches();
           sendResponse({ ok: true });
           return;
         }
         case "getToken": {
-          const stored = await chrome.storage.sync.get(["githubToken"]);
-          sendResponse({ ok: true, token: stored.githubToken || "" });
+          const token = await getOptionalToken();
+          sendResponse({ ok: true, token });
           return;
         }
         case "validateToken": {
@@ -70,9 +76,48 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
+function clearApiCaches() {
+  pullCommentsCache.clear();
+  pullFilesCache.clear();
+  fileContentCache.clear();
+}
+
+function buildScopedCacheKey(owner, repo, pullNumber, token) {
+  return `${tokenFingerprint(token)}:${owner}/${repo}#${pullNumber}`;
+}
+
+function tokenFingerprint(token) {
+  const value = String(token || "");
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+async function getOptionalToken() {
+  const localStored = await chrome.storage.local.get(["githubToken"]);
+  const localToken = String(localStored.githubToken || "").trim();
+  if (localToken) {
+    return localToken;
+  }
+
+  // One-time migration for earlier versions that persisted the token in sync storage.
+  const syncStored = await chrome.storage.sync.get(["githubToken"]);
+  const syncToken = String(syncStored.githubToken || "").trim();
+  if (!syncToken) {
+    return "";
+  }
+
+  await chrome.storage.local.set({ githubToken: syncToken });
+  await chrome.storage.sync.remove(["githubToken"]);
+  clearApiCaches();
+  return syncToken;
+}
+
 async function getToken() {
-  const stored = await chrome.storage.sync.get(["githubToken"]);
-  const token = String(stored.githubToken || "").trim();
+  const token = await getOptionalToken();
   if (!token) {
     throw new Error("No GitHub token configured. Open extension options and set a fine-grained PAT.");
   }
@@ -151,12 +196,34 @@ async function resolveAnchorCandidates(payload, token) {
   const orderedFiles = exactFiles.length ? [...exactFiles, ...fallbackFiles] : files;
 
   const allCandidates = [];
+  let needsLargeFileFallback = false;
+  let fallbackPermissionError = "";
+  let headSha = "";
   for (const file of orderedFiles) {
-    if (!file || !file.filename || !file.patch) {
+    if (!file || !file.filename) {
       continue;
     }
 
-    const patchLines = parsePatchRightLines(file.patch);
+    let patchLines = file.patch ? parsePatchRightLines(file.patch) : [];
+    if (!patchLines.length && isPatchlessAddedFile(file)) {
+      needsLargeFileFallback = true;
+      try {
+        if (!headSha) {
+          headSha = await getPullHeadSha(payload.owner, payload.repo, payload.pullNumber, token);
+        }
+        patchLines = await getAddedFileLinesViaContentsFallback(
+          payload.owner,
+          payload.repo,
+          payload.pullNumber,
+          file.filename,
+          headSha,
+          token
+        );
+      } catch (error) {
+        fallbackPermissionError = stringifyError(error);
+      }
+    }
+
     if (!patchLines.length) {
       continue;
     }
@@ -175,6 +242,16 @@ async function resolveAnchorCandidates(payload, token) {
   }
 
   if (!allCandidates.length) {
+    if (needsLargeFileFallback && fallbackPermissionError) {
+      throw new Error(
+        `Could not map selection from large file fallback: ${fallbackPermissionError}. Ensure PAT has Contents: Read.`
+      );
+    }
+    if (needsLargeFileFallback) {
+      throw new Error(
+        "Could not map selection in this large added file. Try a shorter unique selection, or enable Contents: Read for fallback."
+      );
+    }
     throw new Error("Could not map selection to changed content. Try selecting a shorter unique segment.");
   }
 
@@ -197,14 +274,82 @@ async function resolveAnchorCandidates(payload, token) {
   return deduped;
 }
 
-const pullCommentsCache = new Map();
+function isPatchlessAddedFile(file) {
+  return Boolean(file && !file.patch && String(file.status || "") === "added");
+}
+
+async function getAddedFileLinesViaContentsFallback(owner, repo, pullNumber, path, ref, token) {
+  const cacheKey = `${buildScopedCacheKey(owner, repo, pullNumber, token)}:content:${String(ref || "")}:${String(path || "")}`;
+  if (fileContentCache.has(cacheKey)) {
+    return fileContentCache.get(cacheKey);
+  }
+
+  const encodedPath = encodePathForContentsApi(path);
+  const resp = await githubFetch(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+    token
+  );
+  const json = await resp.json();
+
+  if (!json || json.type !== "file") {
+    throw new Error("Contents API fallback returned a non-file response.");
+  }
+
+  const body = decodeGithubFileContent(json);
+  if (!body) {
+    throw new Error("Contents API fallback returned empty file content.");
+  }
+
+  const lines = parseAddedFileLines(body);
+  fileContentCache.set(cacheKey, lines);
+  return lines;
+}
+
+function encodePathForContentsApi(path) {
+  return String(path || "")
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+function decodeGithubFileContent(fileJson) {
+  const encoding = String(fileJson.encoding || "").toLowerCase();
+  const content = String(fileJson.content || "");
+  if (!content) {
+    return "";
+  }
+
+  if (encoding === "base64") {
+    const normalized = content.replace(/\s+/g, "");
+    const binary = atob(normalized);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  }
+
+  return content;
+}
+
+function parseAddedFileLines(text) {
+  const normalized = String(text || "").replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i];
+    out.push({ line: i + 1, raw, rendered: normalizeForMatch(raw), op: "+" });
+  }
+  return out;
+}
 
 async function listPullReviewComments(payload, token) {
   assertPayload(payload, ["owner", "repo", "pullNumber"]);
   const owner = String(payload.owner);
   const repo = String(payload.repo);
   const pullNumber = Number(payload.pullNumber);
-  const cacheKey = `${owner}/${repo}#${pullNumber}`;
+  const cacheKey = buildScopedCacheKey(owner, repo, pullNumber, token);
   if (payload.forceRefresh) {
     pullCommentsCache.delete(cacheKey);
   }
@@ -228,10 +373,8 @@ async function getPullHeadSha(owner, repo, pullNumber, token) {
   return pull.head.sha;
 }
 
-const pullFilesCache = new Map();
-
 async function getPullFiles(owner, repo, pullNumber, token) {
-  const key = `${owner}/${repo}#${pullNumber}`;
+  const key = buildScopedCacheKey(owner, repo, pullNumber, token);
   if (!pullFilesCache.has(key)) {
     pullFilesCache.set(key, await fetchAllPullFiles(owner, repo, pullNumber, token));
   }

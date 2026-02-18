@@ -67,5 +67,5 @@ Resolved PR review-thread comments are hidden from the sidebar/aligned rail.
 
 - Mapping from rendered text to patch lines is heuristic; repeated text can produce ambiguous candidates.
 - Very large file diffs may omit `patch` in GitHub API; those cannot be auto-mapped.
-- Token is stored in Chrome extension sync storage for convenience.
+- Token is stored in Chrome extension local storage (this browser profile only).
 - Resolved-comment filtering requires GitHub review-thread access. If that lookup fails, comments are not shown.
